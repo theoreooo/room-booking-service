@@ -16,7 +16,7 @@ type Config struct {
 }
 
 type HTTPConfig struct {
-	Port            string        `envconfig:"HTTP_PORT"             default:"8080"`
+	Addr            string        `envconfig:"HTTP_ADDR"             default:"0.0.0.0:8080"`
 	ReadTimeout     time.Duration `envconfig:"HTTP_READ_TIMEOUT"     default:"5s"`
 	WriteTimeout    time.Duration `envconfig:"HTTP_WRITE_TIMEOUT"    default:"10s"`
 	IdleTimeout     time.Duration `envconfig:"HTTP_IDLE_TIMEOUT"     default:"60s"`

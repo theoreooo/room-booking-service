@@ -2,16 +2,24 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"booker/internal/auth"
 	"booker/internal/config"
 	"booker/internal/db"
 	"booker/internal/logger"
-	// "booker/internal/room"
+	"booker/internal/middleware"
+	"booker/internal/room"
+
+	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
@@ -39,5 +47,51 @@ func main() {
 	}
 	defer pg.Close()
 
-	// roomRepo := room.NewRepository(pg)
+	roomRepo := room.NewRoomRepository(pg)
+	roomService := room.NewService(roomRepo)
+
+	authHandler := auth.NewHTTPHandler(cfg.JWT, logger)
+	roomHandler := room.NewHandler(roomService, logger)
+
+	r := chi.NewRouter()
+	r.Use(chimiddleware.Recoverer)
+	r.Use(chimiddleware.RequestID)
+	r.Use(chimiddleware.Logger)
+	r.Use(chimiddleware.Timeout(5 * time.Second))
+
+	r.Get("/_info", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	r.Post("/dummyLogin", authHandler.DummyLogin)
+
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Auth(cfg.JWT.Secret))
+		roomHandler.Register(r)
+	})
+
+	srv := &http.Server{
+		Addr:         cfg.HTTP.Addr,
+		Handler:      r,
+		ReadTimeout:  cfg.HTTP.ReadTimeout,
+		WriteTimeout: cfg.HTTP.WriteTimeout,
+		IdleTimeout:  cfg.HTTP.IdleTimeout,
+	}
+
+	go func() {
+		logger.Info("server listening", slog.String("addr", cfg.HTTP.Addr))
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+
+	logger.Info("shutting down")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("graceful shutdown failed", slog.String("err", err.Error()))
+	}
 }

@@ -46,13 +46,5 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*domain.Room, erro
 		return nil, domain.ErrInvalidRequest
 	}
 
-	room, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if room == nil {
-		return nil, domain.ErrRoomNotFound
-	}
-
-	return room, nil
+	return s.repo.GetByID(ctx, id)
 }

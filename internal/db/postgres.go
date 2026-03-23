@@ -47,14 +47,23 @@ func New(ctx context.Context, cfg config.DBConfig) (*Storage, error) {
 	pgxCfg.MaxConns = int32(cfg.MaxOpenConns)
 	pgxCfg.MinConns = int32(cfg.MaxIdleConns)
 
-	pool, err := pgxpool.NewWithConfig(ctx, pgxCfg)
-	if err != nil {
-		return nil, fmt.Errorf("create pool: %w", err)
+	var pool *pgxpool.Pool
+
+	for i := 0; i < 10; i++ {
+		pool, err = pgxpool.NewWithConfig(ctx, pgxCfg)
+		if err != nil {
+			return nil, fmt.Errorf("create pool: %w", err)
+		}
+
+		if err = pool.Ping(ctx); err == nil {
+			break
+		}
+
+		time.Sleep(2 * time.Second)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("ping: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("ping after retries: %w", err)
 	}
 
 	return &Storage{
