@@ -1,0 +1,59 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      HTTP_PORT: ${HTTP_PORT:-8080}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-5s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-10s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-30s}
+
+      DB_HOST: postgres
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-avito}
+      DB_PASSWORD: ${DB_PASSWORD:-avito}
+      DB_NAME: ${DB_NAME:-booking}
+      DB_SSLMODE: disable
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-10s}
+
+      JWT_SECRET: ${JWT_SECRET:-secret}
+      JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-24h}
+
+      DUMMY_ADMIN_UUID: ${DUMMY_ADMIN_UUID:-00000000-0000-0000-0000-000000000001}
+      DUMMY_USER_UUID: ${DUMMY_USER_UUID:-00000000-0000-0000-0000-000000000002}
+
+      WORKER_SLOT_GENERATION_DAYS: ${WORKER_SLOT_GENERATION_DAYS:-7}
+      WORKER_INTERVAL: ${WORKER_INTERVAL:-1h}
+
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-avito}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-avito}
+      POSTGRES_DB: ${DB_NAME:-booking}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-avito} -d ${DB_NAME:-booking}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate:v4.19.1
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      -path /migrations
+      -database postgres://${DB_USER:-avito}:${DB_PASSWORD:-avito}@postgres:5432/${DB_NAME:-booking}?sslmode=disable
+      up
+    restart: "no"
+
+volumes:
+  postgres_data:
