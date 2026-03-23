@@ -11,7 +11,7 @@ import (
 	"booker/internal/config"
 	"booker/internal/db"
 	"booker/internal/logger"
-	"booker/internal/room"
+	// "booker/internal/room"
 )
 
 func main() {
@@ -39,5 +39,5 @@ func main() {
 	}
 	defer pg.Close()
 
-	roomRepo := room.NewRepository(pg)
+	// roomRepo := room.NewRepository(pg)
 }

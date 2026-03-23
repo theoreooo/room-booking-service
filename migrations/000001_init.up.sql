@@ -25,7 +25,7 @@ CREATE TABLE schedules (
     end_time     TIME NOT NULL,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT days_check CHECK (days_of_week <@ ARRAY[1,2,3,4,5,6,7])
+    CONSTRAINT days_check CHECK (days_of_week <@ ARRAY[1,2,3,4,5,6,7]::SMALLINT[]),
     CONSTRAINT schedules_room_id_unique UNIQUE (room_id),
     CONSTRAINT schedules_time_check CHECK (end_time > start_time),
     CONSTRAINT schedules_slot_duration_check CHECK (
