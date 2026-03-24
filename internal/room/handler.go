@@ -25,8 +25,8 @@ func NewHandler(service *Service, log *slog.Logger) *Handler {
 
 func (h *Handler) Register(r chi.Router) {
 	r.Route("/rooms", func(r chi.Router) {
-		r.Get("/", h.List)
-		r.Post("/", h.Create)
+		r.Get("/list", h.List)
+		r.Post("/create", h.Create)
 	})
 }
 
@@ -63,6 +63,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if claims.Role != domain.UserRoleAdmin {
+		httputil.WriteError(w, http.StatusForbidden, domain.ErrForbidden)
+		return
+	}
+
 	var req createRoomRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, domain.ErrInvalidRequest)
@@ -75,7 +80,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		Capacity:    req.Capacity,
 	}
 
-	created, err := h.service.Create(r.Context(), claims.Role, room)
+	created, err := h.service.Create(r.Context(), room)
 	if err != nil {
 		httputil.HandleError(w, h.log, err)
 		return

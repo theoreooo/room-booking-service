@@ -39,7 +39,7 @@ type Room struct {
 type Schedule struct {
 	ID         uuid.UUID `db:"id"`
 	RoomID     uuid.UUID `db:"room_id"`
-	DaysOfWeek []int     `db:"days_of_week"`
+	DaysOfWeek []int16   `db:"days_of_week"`
 	StartTime  time.Time `db:"start_time"`
 	EndTime    time.Time `db:"end_time"`
 	CreatedAt  time.Time `db:"created_at"`

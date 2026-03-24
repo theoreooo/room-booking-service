@@ -17,22 +17,16 @@ func NewService(repo domain.RoomRepository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) Create(ctx context.Context, role domain.UserRole, room *domain.Room) (*domain.Room, error) {
-	if role != domain.UserRoleAdmin {
-		return nil, domain.ErrForbidden
-	}
-
-	if room == nil {
-		return nil, domain.ErrInvalidRequest
-	}
-
-	if strings.TrimSpace(room.Name) == "" {
+func (s *Service) Create(ctx context.Context, room *domain.Room) (*domain.Room, error) {
+	if room == nil || strings.TrimSpace(room.Name) == "" {
 		return nil, domain.ErrInvalidRequest
 	}
 
 	if room.Capacity != nil && *room.Capacity <= 0 {
 		return nil, domain.ErrInvalidRequest
 	}
+
+	room.ID = uuid.New()
 
 	return s.repo.Create(ctx, room)
 }

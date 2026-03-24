@@ -15,7 +15,7 @@ type RoomRepository struct {
 	db domain.Querier
 }
 
-func NewRoomRepository(db domain.Querier) *RoomRepository {
+func NewRepository(db domain.Querier) *RoomRepository {
 	return &RoomRepository{db: db}
 }
 

@@ -17,6 +17,7 @@ import (
 	"booker/internal/logger"
 	"booker/internal/middleware"
 	"booker/internal/room"
+	"booker/internal/schedule"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -47,11 +48,15 @@ func main() {
 	}
 	defer pg.Close()
 
-	roomRepo := room.NewRoomRepository(pg)
+	roomRepo := room.NewRepository(pg)
+	scheduleRepo := schedule.NewRepository(pg)
+
 	roomService := room.NewService(roomRepo)
+	scheduleService := schedule.NewService(scheduleRepo, roomRepo)
 
 	authHandler := auth.NewHTTPHandler(cfg.JWT, logger)
 	roomHandler := room.NewHandler(roomService, logger)
+	scheduleHandler := schedule.NewHandler(scheduleService, logger)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Recoverer)
@@ -67,6 +72,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(cfg.JWT.Secret))
 		roomHandler.Register(r)
+		scheduleHandler.Register(r)
 	})
 
 	srv := &http.Server{
