@@ -46,12 +46,11 @@ type Schedule struct {
 }
 
 type Slot struct {
-	ID         uuid.UUID `db:"id"`
-	RoomID     uuid.UUID `db:"room_id"`
-	ScheduleID uuid.UUID `db:"schedule_id"`
-	StartAt    time.Time `db:"start_at"`
-	EndAt      time.Time `db:"end_at"`
-	CreatedAt  time.Time `db:"created_at"`
+	ID        uuid.UUID `db:"id"`
+	RoomID    uuid.UUID `db:"room_id"`
+	StartAt   time.Time `db:"start_at"`
+	EndAt     time.Time `db:"end_at"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type SlotWithStatus struct {

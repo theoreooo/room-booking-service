@@ -3,6 +3,11 @@ services:
     build: .
     ports:
       - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       HTTP_ADDR: ${HTTP_ADDR:-0.0.0.0:8080}
       HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-5s}

@@ -2,7 +2,9 @@ package schedule
 
 import (
 	"booker/internal/domain"
+	"booker/internal/slot"
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,10 +13,13 @@ import (
 type Service struct {
 	scheduleRepo domain.ScheduleRepository
 	roomRepo     domain.RoomRepository
+	slotRepo     domain.SlotRepository
+	builder      *slot.Builder
+	logger       *slog.Logger
 }
 
-func NewService(scheduleRepo domain.ScheduleRepository, roomRepo domain.RoomRepository) *Service {
-	return &Service{scheduleRepo: scheduleRepo, roomRepo: roomRepo}
+func NewService(scheduleRepo domain.ScheduleRepository, roomRepo domain.RoomRepository, slotRepo domain.SlotRepository, builder *slot.Builder, logger *slog.Logger) *Service {
+	return &Service{scheduleRepo: scheduleRepo, roomRepo: roomRepo, slotRepo: slotRepo, builder: builder, logger: logger}
 }
 
 func (s *Service) Create(ctx context.Context, schedule *domain.Schedule) (*domain.Schedule, error) {
@@ -73,6 +78,13 @@ func (s *Service) Create(ctx context.Context, schedule *domain.Schedule) (*domai
 	created, err := s.scheduleRepo.Create(ctx, toCreateSchedule)
 	if err != nil {
 		return nil, err
+	}
+
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	end = now.AddDate(0, 0, 7)
+	slots := s.builder.Build(created, now, end)
+	if err := s.slotRepo.BulkCreate(ctx, slots); err != nil {
+		s.logger.Error("failed to bulk create slots", "error", err)
 	}
 
 	return created, nil

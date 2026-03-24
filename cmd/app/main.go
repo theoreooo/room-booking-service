@@ -18,6 +18,8 @@ import (
 	"booker/internal/middleware"
 	"booker/internal/room"
 	"booker/internal/schedule"
+	"booker/internal/slot"
+	"booker/internal/worker"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -50,13 +52,16 @@ func main() {
 
 	roomRepo := room.NewRepository(pg)
 	scheduleRepo := schedule.NewRepository(pg)
+	slotRepo := slot.NewRepository(pg)
 
 	roomService := room.NewService(roomRepo)
-	scheduleService := schedule.NewService(scheduleRepo, roomRepo)
+	scheduleService := schedule.NewService(scheduleRepo, roomRepo, slotRepo, slot.NewBuilder(), logger)
+	slotService := slot.NewService(slotRepo, roomRepo)
 
 	authHandler := auth.NewHTTPHandler(cfg.JWT, logger)
 	roomHandler := room.NewHandler(roomService, logger)
 	scheduleHandler := schedule.NewHandler(scheduleService, logger)
+	slotHandler := slot.NewHandler(slotService, logger)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Recoverer)
@@ -73,6 +78,7 @@ func main() {
 		r.Use(middleware.Auth(cfg.JWT.Secret))
 		roomHandler.Register(r)
 		scheduleHandler.Register(r)
+		slotHandler.Register(r)
 	})
 
 	srv := &http.Server{
@@ -89,6 +95,11 @@ func main() {
 			logger.Error("server error", slog.String("err", err.Error()))
 			os.Exit(1)
 		}
+	}()
+
+	go func() {
+		worker := worker.NewSlotWorker(scheduleRepo, slotRepo, 24*time.Hour, logger)
+		worker.Run(ctx)
 	}()
 
 	<-ctx.Done()

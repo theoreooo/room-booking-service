@@ -24,7 +24,7 @@ func NewHandler(service *Service, log *slog.Logger) *Handler {
 }
 
 func (h *Handler) Register(r chi.Router) {
-	r.Route("/rooms/{roomID}/schedules", func(r chi.Router) {
+	r.Route("/rooms/{roomID}/schedule", func(r chi.Router) {
 		r.Post("/create", h.Create)
 	})
 }
