@@ -26,6 +26,13 @@ Go-сервис бронирования переговорок по специ�
 make up
 ```
 
+или
+
+```bash
+docker-compose up --build
+```
+
+
 Сервис будет доступен на `http://localhost:8080`.
 
 Проверка healthcheck:
