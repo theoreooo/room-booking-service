@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"booker/internal/auth"
+	"booker/internal/booking"
 	"booker/internal/config"
 	"booker/internal/db"
 	"booker/internal/logger"
@@ -19,6 +20,7 @@ import (
 	"booker/internal/room"
 	"booker/internal/schedule"
 	"booker/internal/slot"
+	"booker/internal/user"
 	"booker/internal/worker"
 
 	"github.com/go-chi/chi/v5"
@@ -53,15 +55,19 @@ func main() {
 	roomRepo := room.NewRepository(pg)
 	scheduleRepo := schedule.NewRepository(pg)
 	slotRepo := slot.NewRepository(pg)
+	bookingRepo := booking.NewRepository(pg)
+	userRepo := user.NewRepository(pg)
 
 	roomService := room.NewService(roomRepo)
 	scheduleService := schedule.NewService(scheduleRepo, roomRepo, slotRepo, slot.NewBuilder(), logger)
 	slotService := slot.NewService(slotRepo, roomRepo)
+	bookingService := booking.NewService(bookingRepo, slotRepo)
 
-	authHandler := auth.NewHTTPHandler(cfg.JWT, logger)
+	authHandler := auth.NewHTTPHandler(cfg.JWT, userRepo, logger)
 	roomHandler := room.NewHandler(roomService, logger)
 	scheduleHandler := schedule.NewHandler(scheduleService, logger)
 	slotHandler := slot.NewHandler(slotService, logger)
+	bookingHandler := booking.NewHandler(bookingService, logger)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Recoverer)
@@ -79,6 +85,7 @@ func main() {
 		roomHandler.Register(r)
 		scheduleHandler.Register(r)
 		slotHandler.Register(r)
+		bookingHandler.Register(r)
 	})
 
 	srv := &http.Server{

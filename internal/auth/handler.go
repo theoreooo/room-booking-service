@@ -4,7 +4,9 @@ import (
 	"booker/internal/config"
 	"booker/internal/domain"
 	"booker/internal/httputil"
+	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -13,15 +15,21 @@ import (
 	"github.com/google/uuid"
 )
 
-type Handler struct {
-	cfg *config.JWTConfig
-	log *slog.Logger
+type dummyUserEnsurer interface {
+	Ensure(ctx context.Context, user *domain.User) error
 }
 
-func NewHTTPHandler(cfg config.JWTConfig, log *slog.Logger) *Handler {
+type Handler struct {
+	cfg        *config.JWTConfig
+	dummyUsers dummyUserEnsurer
+	log        *slog.Logger
+}
+
+func NewHTTPHandler(cfg config.JWTConfig, dummyUsers dummyUserEnsurer, log *slog.Logger) *Handler {
 	return &Handler{
-		cfg: &cfg,
-		log: log,
+		cfg:        &cfg,
+		dummyUsers: dummyUsers,
+		log:        log,
 	}
 }
 
@@ -63,6 +71,16 @@ func (h *Handler) DummyLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.dummyUsers.Ensure(r.Context(), &domain.User{
+		ID:    userID,
+		Email: dummyUserEmail(role, userID),
+		Role:  role,
+	}); err != nil {
+		h.log.Error("failed to ensure dummy user", "user_id", userID, "role", role, "err", err)
+		httputil.WriteError(w, http.StatusInternalServerError, domain.ErrInternal)
+		return
+	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
 		UserID: userID,
 		Role:   role,
@@ -81,4 +99,8 @@ func (h *Handler) DummyLogin(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{
 		"token": signed,
 	})
+}
+
+func dummyUserEmail(role domain.UserRole, userID uuid.UUID) string {
+	return fmt.Sprintf("dummy-%s-%s@example.local", role, userID.String())
 }

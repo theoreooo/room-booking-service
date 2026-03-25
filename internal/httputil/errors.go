@@ -26,7 +26,7 @@ func DomainErrToStatus(err *domain.Error) int {
 		return http.StatusForbidden
 	case domain.ErrUnauthorized:
 		return http.StatusUnauthorized
-	case domain.ErrRoomNotFound, domain.ErrSlotNotFound, domain.ErrBookingNotFound:
+	case domain.ErrRoomNotFound, domain.ErrUserNotFound, domain.ErrSlotNotFound, domain.ErrBookingNotFound:
 		return http.StatusNotFound
 	case domain.ErrScheduleExists, domain.ErrSlotAlreadyBooked:
 		return http.StatusConflict

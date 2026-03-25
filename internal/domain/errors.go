@@ -30,6 +30,11 @@ var (
 		Message: "room not found",
 	}
 
+	ErrUserNotFound = &Error{
+		Code:    "USER_NOT_FOUND",
+		Message: "user not found",
+	}
+
 	ErrSlotNotFound = &Error{
 		Code:    "SLOT_NOT_FOUND",
 		Message: "slot not found",
