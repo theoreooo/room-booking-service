@@ -5,21 +5,45 @@ import (
 	"booker/internal/slot"
 	"context"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 type Service struct {
-	scheduleRepo domain.ScheduleRepository
-	roomRepo     domain.RoomRepository
-	slotRepo     domain.SlotRepository
-	builder      *slot.Builder
-	logger       *slog.Logger
+	scheduleRepo   domain.ScheduleRepository
+	roomRepo       domain.RoomRepository
+	slotRepo       domain.SlotRepository
+	builder        *slot.Builder
+	generationDays int
+	logger         *slog.Logger
 }
 
-func NewService(scheduleRepo domain.ScheduleRepository, roomRepo domain.RoomRepository, slotRepo domain.SlotRepository, builder *slot.Builder, logger *slog.Logger) *Service {
-	return &Service{scheduleRepo: scheduleRepo, roomRepo: roomRepo, slotRepo: slotRepo, builder: builder, logger: logger}
+func NewService(
+	scheduleRepo domain.ScheduleRepository,
+	roomRepo domain.RoomRepository,
+	slotRepo domain.SlotRepository,
+	builder *slot.Builder,
+	generationDays int,
+	logger *slog.Logger,
+) *Service {
+	if builder == nil {
+		builder = slot.NewBuilder()
+	}
+
+	if generationDays < 1 {
+		generationDays = 7
+	}
+
+	return &Service{
+		scheduleRepo:   scheduleRepo,
+		roomRepo:       roomRepo,
+		slotRepo:       slotRepo,
+		builder:        builder,
+		generationDays: generationDays,
+		logger:         logger,
+	}
 }
 
 func (s *Service) Create(ctx context.Context, schedule *domain.Schedule) (*domain.Schedule, error) {
@@ -55,6 +79,9 @@ func (s *Service) Create(ctx context.Context, schedule *domain.Schedule) (*domai
 	for d := range uniqDays {
 		days = append(days, d)
 	}
+	sort.Slice(days, func(i, j int) bool {
+		return days[i] < days[j]
+	})
 
 	if !schedule.EndTime.After(schedule.StartTime) {
 		return nil, domain.ErrInvalidRequest
@@ -81,10 +108,11 @@ func (s *Service) Create(ctx context.Context, schedule *domain.Schedule) (*domai
 	}
 
 	now := time.Now().UTC().Truncate(24 * time.Hour)
-	end = now.AddDate(0, 0, 7)
+	end = now.AddDate(0, 0, s.generationDays)
 	slots := s.builder.Build(created, now, end)
 	if err := s.slotRepo.BulkCreate(ctx, slots); err != nil {
 		s.logger.Error("failed to bulk create slots", "error", err)
+		return nil, err
 	}
 
 	return created, nil

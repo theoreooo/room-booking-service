@@ -10,24 +10,41 @@ import (
 )
 
 type SlotWorker struct {
-	scheduleRepo domain.ScheduleRepository
-	slotRepo     domain.SlotRepository
-	interval     time.Duration
-	logger       *slog.Logger
-	builder      *slot.Builder
+	scheduleRepo   domain.ScheduleRepository
+	slotRepo       domain.SlotRepository
+	generationDays int
+	interval       time.Duration
+	logger         *slog.Logger
+	builder        *slot.Builder
 }
 
 func NewSlotWorker(
 	scheduleRepo domain.ScheduleRepository,
 	slotRepo domain.SlotRepository,
+	builder *slot.Builder,
+	generationDays int,
 	interval time.Duration,
 	logger *slog.Logger,
 ) *SlotWorker {
+	if builder == nil {
+		builder = slot.NewBuilder()
+	}
+
+	if generationDays < 1 {
+		generationDays = 7
+	}
+
+	if interval <= 0 {
+		interval = time.Hour
+	}
+
 	return &SlotWorker{
-		scheduleRepo: scheduleRepo,
-		slotRepo:     slotRepo,
-		interval:     interval,
-		logger:       logger,
+		scheduleRepo:   scheduleRepo,
+		slotRepo:       slotRepo,
+		generationDays: generationDays,
+		interval:       interval,
+		logger:         logger,
+		builder:        builder,
 	}
 }
 
@@ -54,7 +71,7 @@ func (w *SlotWorker) generate(ctx context.Context) {
 	}
 
 	now := time.Now().UTC().Truncate(24 * time.Hour)
-	end := now.AddDate(0, 0, 7)
+	end := now.AddDate(0, 0, w.generationDays)
 
 	for _, sch := range schedules {
 		slots := w.builder.Build(sch, now, end)

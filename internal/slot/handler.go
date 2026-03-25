@@ -32,22 +32,18 @@ type listSlotsRequest struct {
 }
 
 type slotResponse struct {
-	ID        uuid.UUID `json:"id"`
-	RoomID    uuid.UUID `json:"roomId"`
-	StartAt   string    `json:"startAt"`
-	EndAt     string    `json:"endAt"`
-	IsBooked  bool      `json:"isBooked"`
-	CreatedAt string    `json:"createdAt"`
+	ID     uuid.UUID `json:"id"`
+	RoomID uuid.UUID `json:"roomId"`
+	Start  string    `json:"start"`
+	End    string    `json:"end"`
 }
 
 func toSlotResponse(s *domain.Slot) slotResponse {
 	return slotResponse{
-		ID:        s.ID,
-		RoomID:    s.RoomID,
-		StartAt:   s.StartAt.UTC().Format(time.RFC3339),
-		EndAt:     s.EndAt.UTC().Format(time.RFC3339),
-		IsBooked:  false,
-		CreatedAt: s.CreatedAt.UTC().Format(time.RFC3339),
+		ID:     s.ID,
+		RoomID: s.RoomID,
+		Start:  s.StartAt.UTC().Format(time.RFC3339),
+		End:    s.EndAt.UTC().Format(time.RFC3339),
 	}
 }
 

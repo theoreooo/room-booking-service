@@ -9,22 +9,17 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"booker/internal/auth"
 	"booker/internal/booking"
 	"booker/internal/config"
 	"booker/internal/db"
 	"booker/internal/logger"
-	"booker/internal/middleware"
 	"booker/internal/room"
 	"booker/internal/schedule"
 	"booker/internal/slot"
 	"booker/internal/user"
 	"booker/internal/worker"
-
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
@@ -57,9 +52,10 @@ func main() {
 	slotRepo := slot.NewRepository(pg)
 	bookingRepo := booking.NewRepository(pg)
 	userRepo := user.NewRepository(pg)
+	slotBuilder := slot.NewBuilder()
 
 	roomService := room.NewService(roomRepo)
-	scheduleService := schedule.NewService(scheduleRepo, roomRepo, slotRepo, slot.NewBuilder(), logger)
+	scheduleService := schedule.NewService(scheduleRepo, roomRepo, slotRepo, slotBuilder, cfg.Worker.SlotGenerationDays, logger)
 	slotService := slot.NewService(slotRepo, roomRepo)
 	bookingService := booking.NewService(bookingRepo, slotRepo)
 
@@ -69,28 +65,9 @@ func main() {
 	slotHandler := slot.NewHandler(slotService, logger)
 	bookingHandler := booking.NewHandler(bookingService, logger)
 
-	r := chi.NewRouter()
-	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.Logger)
-	r.Use(chimiddleware.Timeout(5 * time.Second))
-
-	r.Get("/_info", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	r.Post("/dummyLogin", authHandler.DummyLogin)
-
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.JWT.Secret))
-		roomHandler.Register(r)
-		scheduleHandler.Register(r)
-		slotHandler.Register(r)
-		bookingHandler.Register(r)
-	})
-
 	srv := &http.Server{
 		Addr:         cfg.HTTP.Addr,
-		Handler:      r,
+		Handler:      newRouter(cfg.JWT.Secret, authHandler, roomHandler, scheduleHandler, slotHandler, bookingHandler),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,
@@ -105,14 +82,21 @@ func main() {
 	}()
 
 	go func() {
-		worker := worker.NewSlotWorker(scheduleRepo, slotRepo, 24*time.Hour, logger)
+		worker := worker.NewSlotWorker(
+			scheduleRepo,
+			slotRepo,
+			slotBuilder,
+			cfg.Worker.SlotGenerationDays,
+			cfg.Worker.Interval,
+			logger,
+		)
 		worker.Run(ctx)
 	}()
 
 	<-ctx.Done()
 
 	logger.Info("shutting down")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
