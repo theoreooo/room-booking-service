@@ -18,7 +18,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	rootpgconn "github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -175,7 +174,7 @@ func TestRepositoryCreateReturnsScheduleExistsOnUniqueViolation(t *testing.T) {
 		queryRowFn: func(context.Context, string, ...any) pgx.Row {
 			return scheduleRowStub{
 				scanFn: func(dest ...any) error {
-					return &rootpgconn.PgError{Code: "23505"}
+					return &pgconn.PgError{Code: "23505"}
 				},
 			}
 		},

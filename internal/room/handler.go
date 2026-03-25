@@ -44,6 +44,14 @@ type roomResponse struct {
 	CreatedAt   string    `json:"createdAt,omitempty"`
 }
 
+type roomEnvelope struct {
+	Room roomResponse `json:"room"`
+}
+
+type roomsEnvelope struct {
+	Rooms []roomResponse `json:"rooms"`
+}
+
 func toRoomResponse(r *domain.Room) roomResponse {
 	return roomResponse{
 		ID:          r.ID,
@@ -54,6 +62,19 @@ func toRoomResponse(r *domain.Room) roomResponse {
 	}
 }
 
+// Create godoc
+// @Summary Create a room
+// @Tags Rooms
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body createRoomRequest true "Create room request"
+// @Success 201 {object} roomEnvelope
+// @Failure 400 {object} httputil.ErrorResponse
+// @Failure 401 {object} httputil.ErrorResponse
+// @Failure 403 {object} httputil.ErrorResponse
+// @Failure 500 {object} httputil.ErrorResponse
+// @Router /rooms/create [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -91,6 +112,15 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// List godoc
+// @Summary List rooms
+// @Tags Rooms
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} roomsEnvelope
+// @Failure 401 {object} httputil.ErrorResponse
+// @Failure 500 {object} httputil.ErrorResponse
+// @Router /rooms/list [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 

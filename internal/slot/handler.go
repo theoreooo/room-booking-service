@@ -38,6 +38,10 @@ type slotResponse struct {
 	End    string    `json:"end"`
 }
 
+type slotsEnvelope struct {
+	Slots []slotResponse `json:"slots"`
+}
+
 func toSlotResponse(s *domain.Slot) slotResponse {
 	return slotResponse{
 		ID:     s.ID,
@@ -47,6 +51,19 @@ func toSlotResponse(s *domain.Slot) slotResponse {
 	}
 }
 
+// ListAvailable godoc
+// @Summary List slots available for booking
+// @Tags Slots
+// @Security BearerAuth
+// @Produce json
+// @Param roomID path string true "Room ID" format(uuid)
+// @Param date query string true "Date in YYYY-MM-DD format"
+// @Success 200 {object} slotsEnvelope
+// @Failure 400 {object} httputil.ErrorResponse
+// @Failure 401 {object} httputil.ErrorResponse
+// @Failure 404 {object} httputil.ErrorResponse
+// @Failure 500 {object} httputil.ErrorResponse
+// @Router /rooms/{roomID}/slots/list [get]
 func (h *Handler) ListAvailable(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 

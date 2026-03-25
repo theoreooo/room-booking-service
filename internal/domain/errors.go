@@ -25,6 +25,21 @@ var (
 		Message: "forbidden",
 	}
 
+	ErrInvalidCredentials = &Error{
+		Code:    "UNAUTHORIZED",
+		Message: "invalid email or password",
+	}
+
+	ErrEmailAlreadyExists = &Error{
+		Code:    "INVALID_REQUEST",
+		Message: "email is already taken",
+	}
+
+	ErrConferenceUnavailable = &Error{
+		Code:    "CONFERENCE_SERVICE_UNAVAILABLE",
+		Message: "conference service is unavailable",
+	}
+
 	ErrRoomNotFound = &Error{
 		Code:    "ROOM_NOT_FOUND",
 		Message: "room not found",

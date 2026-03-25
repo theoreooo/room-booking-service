@@ -16,6 +16,7 @@ import (
 
 	"booker/internal/auth"
 	"booker/internal/booking"
+	"booker/internal/conference"
 	"booker/internal/config"
 	"booker/internal/domain"
 	"booker/internal/room"
@@ -44,9 +45,9 @@ func newTestState() *testState {
 	}
 }
 
-type memDummyUsers struct{ state *testState }
+type memUserRepo struct{ state *testState }
 
-func (r *memDummyUsers) Ensure(_ context.Context, user *domain.User) error {
+func (r *memUserRepo) Ensure(_ context.Context, user *domain.User) error {
 	r.state.mu.Lock()
 	defer r.state.mu.Unlock()
 
@@ -56,6 +57,38 @@ func (r *memDummyUsers) Ensure(_ context.Context, user *domain.User) error {
 	}
 	r.state.users[copyUser.ID] = &copyUser
 	return nil
+}
+
+func (r *memUserRepo) Create(_ context.Context, user *domain.User) (*domain.User, error) {
+	r.state.mu.Lock()
+	defer r.state.mu.Unlock()
+
+	for _, existing := range r.state.users {
+		if existing.Email == user.Email {
+			return nil, domain.ErrEmailAlreadyExists
+		}
+	}
+
+	copyUser := *user
+	if copyUser.CreatedAt.IsZero() {
+		copyUser.CreatedAt = time.Now().UTC()
+	}
+	r.state.users[copyUser.ID] = &copyUser
+	return &copyUser, nil
+}
+
+func (r *memUserRepo) GetByEmail(_ context.Context, email string) (*domain.User, error) {
+	r.state.mu.Lock()
+	defer r.state.mu.Unlock()
+
+	for _, user := range r.state.users {
+		if user.Email == email {
+			copyUser := *user
+			return &copyUser, nil
+		}
+	}
+
+	return nil, domain.ErrUserNotFound
 }
 
 type memRoomRepo struct{ state *testState }
@@ -310,7 +343,7 @@ func newIntegrationRouter() http.Handler {
 	scheduleRepo := &memScheduleRepo{state: state}
 	slotRepo := &memSlotRepo{state: state}
 	bookingRepo := &memBookingRepo{state: state}
-	userStore := &memDummyUsers{state: state}
+	userStore := &memUserRepo{state: state}
 
 	cfg := config.JWTConfig{
 		Secret:         "test-secret",
@@ -321,17 +354,18 @@ func newIntegrationRouter() http.Handler {
 
 	slotBuilder := slot.NewBuilder()
 
-	return newRouter(
+	return newRouterWithRequestLogging(
 		cfg.Secret,
-		auth.NewHTTPHandler(cfg, userStore, logger),
+		auth.NewHTTPHandler(cfg, userStore, userStore, logger),
 		room.NewHandler(room.NewService(roomRepo), logger),
 		schedule.NewHandler(schedule.NewService(scheduleRepo, roomRepo, slotRepo, slotBuilder, 7, logger), logger),
 		slot.NewHandler(slot.NewService(slotRepo, roomRepo), logger),
-		booking.NewHandler(booking.NewService(bookingRepo, slotRepo), logger),
+		booking.NewHandler(booking.NewService(bookingRepo, slotRepo, conference.NewMockService(config.ConferenceConfig{})), logger),
+		false,
 	)
 }
 
-func jsonRequest(t *testing.T, router http.Handler, method, path, token string, body any) *httptest.ResponseRecorder {
+func jsonRequest(t testing.TB, router http.Handler, method, path, token string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var payload io.Reader
@@ -356,7 +390,7 @@ func jsonRequest(t *testing.T, router http.Handler, method, path, token string, 
 	return rec
 }
 
-func dummyLoginToken(t *testing.T, router http.Handler, role string) string {
+func dummyLoginToken(t testing.TB, router http.Handler, role string) string {
 	t.Helper()
 
 	rec := jsonRequest(t, router, http.MethodPost, "/dummyLogin", "", map[string]string{"role": role})
@@ -515,5 +549,25 @@ func TestIntegrationUserCanCancelBookingIdempotently(t *testing.T) {
 	}
 	if cancelResp.Booking.Status != string(domain.BookingStatusCancelled) {
 		t.Fatalf("expected cancelled status, got %s", cancelResp.Booking.Status)
+	}
+}
+
+func TestSwaggerRoutes(t *testing.T) {
+	router := newIntegrationRouter()
+
+	indexRec := jsonRequest(t, router, http.MethodGet, "/swagger/index.html", "", nil)
+	if indexRec.Code != http.StatusOK {
+		t.Fatalf("expected swagger index status 200, got %d", indexRec.Code)
+	}
+	if !strings.Contains(indexRec.Body.String(), "/swagger/doc.json") {
+		t.Fatalf("expected swagger index to point to swagger doc, got %q", indexRec.Body.String())
+	}
+
+	docRec := jsonRequest(t, router, http.MethodGet, "/swagger/doc.json", "", nil)
+	if docRec.Code != http.StatusOK {
+		t.Fatalf("expected swagger doc status 200, got %d", docRec.Code)
+	}
+	if !strings.Contains(docRec.Body.String(), "\"swagger\": \"2.0\"") {
+		t.Fatalf("expected swagger doc response, got %q", docRec.Body.String())
 	}
 }

@@ -24,13 +24,15 @@ func DomainErrToStatus(err *domain.Error) int {
 	switch err {
 	case domain.ErrForbidden, domain.ErrNotBookingOwner:
 		return http.StatusForbidden
-	case domain.ErrUnauthorized:
+	case domain.ErrUnauthorized, domain.ErrInvalidCredentials:
 		return http.StatusUnauthorized
 	case domain.ErrRoomNotFound, domain.ErrUserNotFound, domain.ErrSlotNotFound, domain.ErrBookingNotFound:
 		return http.StatusNotFound
 	case domain.ErrScheduleExists, domain.ErrSlotAlreadyBooked:
 		return http.StatusConflict
-	case domain.ErrInvalidRequest, domain.ErrSlotInThePast:
+	case domain.ErrConferenceUnavailable:
+		return http.StatusServiceUnavailable
+	case domain.ErrInvalidRequest, domain.ErrSlotInThePast, domain.ErrEmailAlreadyExists:
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

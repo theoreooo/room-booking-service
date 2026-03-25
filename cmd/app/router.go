@@ -23,15 +23,38 @@ func newRouter(
 	slotHandler *slot.Handler,
 	bookingHandler *booking.Handler,
 ) http.Handler {
+	return newRouterWithRequestLogging(
+		jwtSecret,
+		authHandler,
+		roomHandler,
+		scheduleHandler,
+		slotHandler,
+		bookingHandler,
+		true,
+	)
+}
+
+func newRouterWithRequestLogging(
+	jwtSecret string,
+	authHandler *auth.Handler,
+	roomHandler *room.Handler,
+	scheduleHandler *schedule.Handler,
+	slotHandler *slot.Handler,
+	bookingHandler *booking.Handler,
+	logRequests bool,
+) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.Logger)
+	if logRequests {
+		r.Use(chimiddleware.Logger)
+	}
 	r.Use(chimiddleware.Timeout(5 * time.Second))
 
-	r.Get("/_info", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
+	r.Get("/_info", info)
+	registerSwaggerRoutes(r)
+	r.Post("/register", authHandler.Register)
+	r.Post("/login", authHandler.Login)
 	r.Post("/dummyLogin", authHandler.DummyLogin)
 
 	r.Group(func(r chi.Router) {
@@ -43,4 +66,13 @@ func newRouter(
 	})
 
 	return r
+}
+
+// info godoc
+// @Summary Service healthcheck
+// @Tags Info
+// @Success 200 "OK"
+// @Router /_info [get]
+func info(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
 }

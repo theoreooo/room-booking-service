@@ -1,4 +1,4 @@
-package booking
+package user
 
 import (
 	"context"
@@ -44,58 +44,31 @@ func (q querierStub) Exec(context.Context, string, ...any) (pgconn.CommandTag, e
 	return pgconn.CommandTag{}, nil
 }
 
-func TestRepositoryCreateReturnsSlotAlreadyBookedWhenConflictDoesNothing(t *testing.T) {
-	repo := NewRepository(querierStub{
-		queryRowFn: func(context.Context, string, ...any) pgx.Row {
-			return rowStub{
-				scanFn: func(dest ...any) error {
-					return pgx.ErrNoRows
-				},
-			}
-		},
-	})
-
-	created, err := repo.Create(context.Background(), &domain.Booking{
-		ID:     uuid.New(),
-		SlotID: uuid.New(),
-		UserID: uuid.New(),
-		Status: domain.BookingStatusActive,
-	})
-
-	if err != domain.ErrSlotAlreadyBooked {
-		t.Fatalf("expected ErrSlotAlreadyBooked, got %v", err)
-	}
-	if created != nil {
-		t.Fatalf("expected nil booking, got %#v", created)
-	}
-}
-
-func TestRepositoryCreateReturnsSlotNotFoundForSlotForeignKey(t *testing.T) {
+func TestRepositoryCreateReturnsEmailAlreadyExistsOnUniqueViolation(t *testing.T) {
 	repo := NewRepository(querierStub{
 		queryRowFn: func(context.Context, string, ...any) pgx.Row {
 			return rowStub{
 				scanFn: func(dest ...any) error {
 					return &pgconn.PgError{
-						Code:           "23503",
-						ConstraintName: "bookings_slot_id_fkey",
+						Code:           "23505",
+						ConstraintName: "users_email_key",
 					}
 				},
 			}
 		},
 	})
 
-	created, err := repo.Create(context.Background(), &domain.Booking{
-		ID:     uuid.New(),
-		SlotID: uuid.New(),
-		UserID: uuid.New(),
-		Status: domain.BookingStatusActive,
+	created, err := repo.Create(context.Background(), &domain.User{
+		ID:    uuid.New(),
+		Email: "user@example.com",
+		Role:  domain.UserRoleUser,
 	})
 
-	if err != domain.ErrSlotNotFound {
-		t.Fatalf("expected ErrSlotNotFound, got %v", err)
+	if err != domain.ErrEmailAlreadyExists {
+		t.Fatalf("expected ErrEmailAlreadyExists, got %v", err)
 	}
 	if created != nil {
-		t.Fatalf("expected nil booking, got %#v", created)
+		t.Fatalf("expected nil user, got %#v", created)
 	}
 }
 
@@ -110,17 +83,16 @@ func TestRepositoryCreateReturnsInternalForUnexpectedError(t *testing.T) {
 		},
 	})
 
-	created, err := repo.Create(context.Background(), &domain.Booking{
-		ID:     uuid.New(),
-		SlotID: uuid.New(),
-		UserID: uuid.New(),
-		Status: domain.BookingStatusActive,
+	created, err := repo.Create(context.Background(), &domain.User{
+		ID:    uuid.New(),
+		Email: "user@example.com",
+		Role:  domain.UserRoleUser,
 	})
 
 	if err != domain.ErrInternal {
 		t.Fatalf("expected ErrInternal, got %v", err)
 	}
 	if created != nil {
-		t.Fatalf("expected nil booking, got %#v", created)
+		t.Fatalf("expected nil user, got %#v", created)
 	}
 }

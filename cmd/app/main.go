@@ -12,6 +12,7 @@ import (
 
 	"booker/internal/auth"
 	"booker/internal/booking"
+	"booker/internal/conference"
 	"booker/internal/config"
 	"booker/internal/db"
 	"booker/internal/logger"
@@ -52,14 +53,15 @@ func main() {
 	slotRepo := slot.NewRepository(pg)
 	bookingRepo := booking.NewRepository(pg)
 	userRepo := user.NewRepository(pg)
+	conferenceService := conference.NewMockService(cfg.Conference)
 	slotBuilder := slot.NewBuilder()
 
 	roomService := room.NewService(roomRepo)
 	scheduleService := schedule.NewService(scheduleRepo, roomRepo, slotRepo, slotBuilder, cfg.Worker.SlotGenerationDays, logger)
 	slotService := slot.NewService(slotRepo, roomRepo)
-	bookingService := booking.NewService(bookingRepo, slotRepo)
+	bookingService := booking.NewService(bookingRepo, slotRepo, conferenceService)
 
-	authHandler := auth.NewHTTPHandler(cfg.JWT, userRepo, logger)
+	authHandler := auth.NewHTTPHandler(cfg.JWT, userRepo, userRepo, logger)
 	roomHandler := room.NewHandler(roomService, logger)
 	scheduleHandler := schedule.NewHandler(scheduleService, logger)
 	slotHandler := slot.NewHandler(slotService, logger)

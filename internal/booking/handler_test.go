@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"booker/internal/conference"
 	"booker/internal/domain"
 	"booker/internal/middleware"
 
@@ -90,7 +91,7 @@ func TestHandlerCreateUsesUserIDFromToken(t *testing.T) {
 
 func TestHandlerCreateRejectsAdminRole(t *testing.T) {
 	secret := "secret"
-	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{})
+	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/bookings/create", strings.NewReader(`{"slotId":"`+uuid.NewString()+`"}`))
 	req.Header.Set("Authorization", "Bearer "+bookingToken(t, secret, uuid.New(), domain.UserRoleAdmin))
@@ -119,7 +120,7 @@ func TestHandlerListReturnsDefaults(t *testing.T) {
 			}}, 1, nil
 		},
 	}
-	service := NewService(bookingRepo, &slotRepositoryStub{})
+	service := NewService(bookingRepo, &slotRepositoryStub{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/bookings/list", nil)
 	req.Header.Set("Authorization", "Bearer "+bookingToken(t, secret, uuid.New(), domain.UserRoleAdmin))
@@ -150,7 +151,7 @@ func TestHandlerListReturnsDefaults(t *testing.T) {
 
 func TestHandlerListRejectsInvalidPagination(t *testing.T) {
 	secret := "secret"
-	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{})
+	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/bookings/list?page=abc", nil)
 	req.Header.Set("Authorization", "Bearer "+bookingToken(t, secret, uuid.New(), domain.UserRoleAdmin))
@@ -198,6 +199,62 @@ func TestHandlerListMyReturnsBookings(t *testing.T) {
 	}
 }
 
+func TestHandlerCreateReturnsConferenceLinkWhenRequested(t *testing.T) {
+	secret := "secret"
+	slotID := uuid.New()
+	userID := uuid.New()
+	now := time.Date(2026, 3, 25, 10, 0, 0, 0, time.UTC)
+
+	bookingRepo := &bookingRepositoryStub{
+		createFn: func(_ context.Context, booking *domain.Booking) (*domain.Booking, error) {
+			booking.CreatedAt = now
+			return booking, nil
+		},
+	}
+	slotRepo := &slotRepositoryStub{
+		getByIDFn: func(context.Context, uuid.UUID) (*domain.Slot, error) {
+			return &domain.Slot{
+				ID:      slotID,
+				StartAt: now.Add(time.Hour),
+				EndAt:   now.Add(90 * time.Minute),
+			}, nil
+		},
+	}
+
+	service := &Service{
+		bookingRepo: bookingRepo,
+		slotRepo:    slotRepo,
+		conference: &conferenceServiceStub{
+			createLinkFn: func(context.Context, conference.Request) (string, error) {
+				return "https://conference.mock.local/rooms/test-link", nil
+			},
+		},
+		now: func() time.Time { return now },
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/bookings/create", strings.NewReader(`{"slotId":"`+slotID.String()+`","createConferenceLink":true}`))
+	req.Header.Set("Authorization", "Bearer "+bookingToken(t, secret, userID, domain.UserRoleUser))
+	rec := httptest.NewRecorder()
+
+	newBookingTestRouter(secret, service).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Booking struct {
+			ConferenceLink string `json:"conferenceLink"`
+		} `json:"booking"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Booking.ConferenceLink != "https://conference.mock.local/rooms/test-link" {
+		t.Fatalf("expected conference link in response, got %q", resp.Booking.ConferenceLink)
+	}
+}
+
 func TestHandlerCancelReturnsCancelledBooking(t *testing.T) {
 	secret := "secret"
 	userID := uuid.New()
@@ -219,7 +276,7 @@ func TestHandlerCancelReturnsCancelledBooking(t *testing.T) {
 			}, nil
 		},
 	}
-	service := NewService(bookingRepo, &slotRepositoryStub{})
+	service := NewService(bookingRepo, &slotRepositoryStub{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/bookings/"+bookingID.String()+"/cancel", nil)
 	req = withBookingRouteParam(req, "bookingID", bookingID.String())

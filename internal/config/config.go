@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	HTTP   HTTPConfig
-	DB     DBConfig
-	JWT    JWTConfig
-	Worker WorkerConfig
-	Log    LogConfig
+	HTTP       HTTPConfig
+	DB         DBConfig
+	JWT        JWTConfig
+	Worker     WorkerConfig
+	Conference ConferenceConfig
+	Log        LogConfig
 }
 
 type HTTPConfig struct {
@@ -52,6 +53,12 @@ type JWTConfig struct {
 type WorkerConfig struct {
 	SlotGenerationDays int           `envconfig:"WORKER_SLOT_GENERATION_DAYS" default:"7"`
 	Interval           time.Duration `envconfig:"WORKER_INTERVAL"             default:"1h"`
+}
+
+type ConferenceConfig struct {
+	BaseURL    string `envconfig:"CONFERENCE_BASE_URL"    default:"https://conference.mock.local"`
+	FailCreate bool   `envconfig:"CONFERENCE_MOCK_FAIL_CREATE" default:"false"`
+	FailDelete bool   `envconfig:"CONFERENCE_MOCK_FAIL_DELETE" default:"false"`
 }
 
 type LogConfig struct {

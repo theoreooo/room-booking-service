@@ -44,6 +44,10 @@ type scheduleResponse struct {
 	CreatedAt  string    `json:"createdAt"`
 }
 
+type scheduleEnvelope struct {
+	Schedule scheduleResponse `json:"schedule"`
+}
+
 func toScheduleResponse(s *domain.Schedule) scheduleResponse {
 	return scheduleResponse{
 		ID:         s.ID,
@@ -55,6 +59,22 @@ func toScheduleResponse(s *domain.Schedule) scheduleResponse {
 	}
 }
 
+// Create godoc
+// @Summary Create a room schedule
+// @Tags Schedules
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param roomID path string true "Room ID" format(uuid)
+// @Param request body createScheduleRequest true "Create schedule request"
+// @Success 201 {object} scheduleEnvelope
+// @Failure 400 {object} httputil.ErrorResponse
+// @Failure 401 {object} httputil.ErrorResponse
+// @Failure 403 {object} httputil.ErrorResponse
+// @Failure 404 {object} httputil.ErrorResponse
+// @Failure 409 {object} httputil.ErrorResponse
+// @Failure 500 {object} httputil.ErrorResponse
+// @Router /rooms/{roomID}/schedule/create [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 

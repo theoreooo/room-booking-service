@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Repository struct {
@@ -28,6 +29,7 @@ func (r *Repository) Ensure(ctx context.Context, user *domain.User) error {
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (id) DO UPDATE
 		SET email = EXCLUDED.email,
+		    password_hash = EXCLUDED.password_hash,
 		    role = EXCLUDED.role
 	`
 
@@ -47,6 +49,11 @@ func (r *Repository) Create(ctx context.Context, user *domain.User) (*domain.Use
 
 	err := r.db.QueryRow(ctx, query, user.ID, user.Email, user.PasswordHash, user.Role).Scan(&user.CreatedAt)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_email_key" {
+			return nil, domain.ErrEmailAlreadyExists
+		}
+
 		return nil, domain.ErrInternal
 	}
 

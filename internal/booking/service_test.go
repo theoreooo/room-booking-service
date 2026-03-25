@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"booker/internal/conference"
 	"github.com/google/uuid"
 
 	"booker/internal/domain"
@@ -81,6 +82,37 @@ type slotRepositoryStub struct {
 	getByIDFn func(context.Context, uuid.UUID) (*domain.Slot, error)
 }
 
+type conferenceServiceStub struct {
+	createLinkFn    func(context.Context, conference.Request) (string, error)
+	deleteLinkFn    func(context.Context, string) error
+	createCalls     int
+	deleteCalls     int
+	lastCreateReq   conference.Request
+	lastDeletedLink string
+}
+
+func (s *conferenceServiceStub) CreateLink(ctx context.Context, req conference.Request) (string, error) {
+	s.createCalls++
+	s.lastCreateReq = req
+
+	if s.createLinkFn != nil {
+		return s.createLinkFn(ctx, req)
+	}
+
+	return "https://conference.mock.local/rooms/" + uuid.NewString(), nil
+}
+
+func (s *conferenceServiceStub) DeleteLink(ctx context.Context, link string) error {
+	s.deleteCalls++
+	s.lastDeletedLink = link
+
+	if s.deleteLinkFn != nil {
+		return s.deleteLinkFn(ctx, link)
+	}
+
+	return nil
+}
+
 func (s *slotRepositoryStub) BulkCreate(context.Context, []*domain.Slot) error {
 	return nil
 }
@@ -98,7 +130,7 @@ func (s *slotRepositoryStub) ListAvailableByRoomAndDate(context.Context, uuid.UU
 }
 
 func TestServiceCreateRejectsInvalidRequest(t *testing.T) {
-	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{})
+	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{}, nil)
 
 	tests := []struct {
 		name    string
@@ -121,7 +153,7 @@ func TestServiceCreateRejectsInvalidRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			created, err := service.Create(context.Background(), tt.booking)
+			created, err := service.Create(context.Background(), tt.booking, CreateOptions{})
 			if err != domain.ErrInvalidRequest {
 				t.Fatalf("expected ErrInvalidRequest, got %v", err)
 			}
@@ -147,13 +179,14 @@ func TestServiceCreateRejectsPastSlot(t *testing.T) {
 	service := &Service{
 		bookingRepo: bookingRepo,
 		slotRepo:    slotRepo,
+		conference:  &conferenceServiceStub{},
 		now:         func() time.Time { return now },
 	}
 
 	created, err := service.Create(context.Background(), &domain.Booking{
 		SlotID: uuid.New(),
 		UserID: uuid.New(),
-	})
+	}, CreateOptions{})
 	if err != domain.ErrSlotInThePast {
 		t.Fatalf("expected ErrSlotInThePast, got %v", err)
 	}
@@ -180,6 +213,7 @@ func TestServiceCreateSetsIDAndActiveStatus(t *testing.T) {
 	service := &Service{
 		bookingRepo: bookingRepo,
 		slotRepo:    slotRepo,
+		conference:  &conferenceServiceStub{},
 		now:         func() time.Time { return now },
 	}
 
@@ -188,7 +222,7 @@ func TestServiceCreateSetsIDAndActiveStatus(t *testing.T) {
 		UserID: uuid.New(),
 	}
 
-	created, err := service.Create(context.Background(), booking)
+	created, err := service.Create(context.Background(), booking, CreateOptions{})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -206,6 +240,143 @@ func TestServiceCreateSetsIDAndActiveStatus(t *testing.T) {
 	}
 }
 
+func TestServiceCreateAttachesConferenceLink(t *testing.T) {
+	now := time.Date(2026, 3, 25, 10, 0, 0, 0, time.UTC)
+	bookingRepo := &bookingRepositoryStub{}
+	slotID := uuid.New()
+	userID := uuid.New()
+	slotRepo := &slotRepositoryStub{
+		getByIDFn: func(context.Context, uuid.UUID) (*domain.Slot, error) {
+			return &domain.Slot{
+				ID:      slotID,
+				StartAt: now.Add(time.Hour),
+				EndAt:   now.Add(90 * time.Minute),
+			}, nil
+		},
+	}
+	conferenceStub := &conferenceServiceStub{
+		createLinkFn: func(context.Context, conference.Request) (string, error) {
+			return "https://conference.mock.local/rooms/test-link", nil
+		},
+	}
+
+	service := &Service{
+		bookingRepo: bookingRepo,
+		slotRepo:    slotRepo,
+		conference:  conferenceStub,
+		now:         func() time.Time { return now },
+	}
+
+	booking := &domain.Booking{
+		SlotID: slotID,
+		UserID: userID,
+	}
+
+	created, err := service.Create(context.Background(), booking, CreateOptions{CreateConferenceLink: true})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if created.ConferenceLink == nil || *created.ConferenceLink != "https://conference.mock.local/rooms/test-link" {
+		t.Fatalf("expected conference link to be attached, got %#v", created.ConferenceLink)
+	}
+	if conferenceStub.createCalls != 1 {
+		t.Fatalf("expected conference service CreateLink to be called once, got %d", conferenceStub.createCalls)
+	}
+	if conferenceStub.lastCreateReq.SlotID != slotID {
+		t.Fatalf("expected slot id %s, got %s", slotID, conferenceStub.lastCreateReq.SlotID)
+	}
+	if conferenceStub.lastCreateReq.UserID != userID {
+		t.Fatalf("expected user id %s, got %s", userID, conferenceStub.lastCreateReq.UserID)
+	}
+}
+
+func TestServiceCreateReturnsConferenceFailureWithoutPersistingBooking(t *testing.T) {
+	now := time.Date(2026, 3, 25, 10, 0, 0, 0, time.UTC)
+	bookingRepo := &bookingRepositoryStub{}
+	slotRepo := &slotRepositoryStub{
+		getByIDFn: func(context.Context, uuid.UUID) (*domain.Slot, error) {
+			return &domain.Slot{
+				ID:      uuid.New(),
+				StartAt: now.Add(time.Hour),
+				EndAt:   now.Add(90 * time.Minute),
+			}, nil
+		},
+	}
+	conferenceStub := &conferenceServiceStub{
+		createLinkFn: func(context.Context, conference.Request) (string, error) {
+			return "", domain.ErrConferenceUnavailable
+		},
+	}
+
+	service := &Service{
+		bookingRepo: bookingRepo,
+		slotRepo:    slotRepo,
+		conference:  conferenceStub,
+		now:         func() time.Time { return now },
+	}
+
+	created, err := service.Create(context.Background(), &domain.Booking{
+		SlotID: uuid.New(),
+		UserID: uuid.New(),
+	}, CreateOptions{CreateConferenceLink: true})
+	if err != domain.ErrConferenceUnavailable {
+		t.Fatalf("expected ErrConferenceUnavailable, got %v", err)
+	}
+	if created != nil {
+		t.Fatalf("expected nil booking, got %#v", created)
+	}
+	if bookingRepo.createCalls != 0 {
+		t.Fatalf("expected booking repo Create not to be called, got %d", bookingRepo.createCalls)
+	}
+}
+
+func TestServiceCreateCleansUpConferenceLinkWhenPersistenceFails(t *testing.T) {
+	now := time.Date(2026, 3, 25, 10, 0, 0, 0, time.UTC)
+	bookingRepo := &bookingRepositoryStub{
+		createFn: func(context.Context, *domain.Booking) (*domain.Booking, error) {
+			return nil, domain.ErrSlotAlreadyBooked
+		},
+	}
+	slotRepo := &slotRepositoryStub{
+		getByIDFn: func(context.Context, uuid.UUID) (*domain.Slot, error) {
+			return &domain.Slot{
+				ID:      uuid.New(),
+				StartAt: now.Add(time.Hour),
+				EndAt:   now.Add(90 * time.Minute),
+			}, nil
+		},
+	}
+	conferenceStub := &conferenceServiceStub{
+		createLinkFn: func(context.Context, conference.Request) (string, error) {
+			return "https://conference.mock.local/rooms/test-link", nil
+		},
+	}
+
+	service := &Service{
+		bookingRepo: bookingRepo,
+		slotRepo:    slotRepo,
+		conference:  conferenceStub,
+		now:         func() time.Time { return now },
+	}
+
+	created, err := service.Create(context.Background(), &domain.Booking{
+		SlotID: uuid.New(),
+		UserID: uuid.New(),
+	}, CreateOptions{CreateConferenceLink: true})
+	if err != domain.ErrSlotAlreadyBooked {
+		t.Fatalf("expected ErrSlotAlreadyBooked, got %v", err)
+	}
+	if created != nil {
+		t.Fatalf("expected nil booking, got %#v", created)
+	}
+	if conferenceStub.deleteCalls != 1 {
+		t.Fatalf("expected DeleteLink to be called once, got %d", conferenceStub.deleteCalls)
+	}
+	if conferenceStub.lastDeletedLink != "https://conference.mock.local/rooms/test-link" {
+		t.Fatalf("unexpected deleted link %q", conferenceStub.lastDeletedLink)
+	}
+}
+
 func TestServiceListUsesDefaults(t *testing.T) {
 	bookingRepo := &bookingRepositoryStub{
 		listFn: func(context.Context, int, int) ([]*domain.BookingWithSlot, int, error) {
@@ -213,7 +384,7 @@ func TestServiceListUsesDefaults(t *testing.T) {
 		},
 	}
 
-	service := NewService(bookingRepo, &slotRepositoryStub{})
+	service := NewService(bookingRepo, &slotRepositoryStub{}, nil)
 
 	bookings, total, err := service.List(context.Background(), 0, 0)
 	if err != nil {
@@ -234,7 +405,7 @@ func TestServiceListUsesDefaults(t *testing.T) {
 }
 
 func TestServiceListRejectsInvalidPagination(t *testing.T) {
-	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{})
+	service := NewService(&bookingRepositoryStub{}, &slotRepositoryStub{}, nil)
 
 	tests := []struct {
 		name     string
@@ -273,6 +444,7 @@ func TestServiceListMyPassesCurrentTime(t *testing.T) {
 	service := &Service{
 		bookingRepo: bookingRepo,
 		slotRepo:    &slotRepositoryStub{},
+		conference:  &conferenceServiceStub{},
 		now:         func() time.Time { return now },
 	}
 
@@ -304,7 +476,7 @@ func TestServiceCancelRejectsForeignBooking(t *testing.T) {
 		},
 	}
 
-	service := NewService(bookingRepo, &slotRepositoryStub{})
+	service := NewService(bookingRepo, &slotRepositoryStub{}, nil)
 
 	cancelled, err := service.Cancel(context.Background(), uuid.New(), uuid.New())
 	if err != domain.ErrNotBookingOwner {
@@ -331,7 +503,7 @@ func TestServiceCancelIsIdempotent(t *testing.T) {
 		},
 	}
 
-	service := NewService(bookingRepo, &slotRepositoryStub{})
+	service := NewService(bookingRepo, &slotRepositoryStub{}, nil)
 
 	cancelled, err := service.Cancel(context.Background(), existing.ID, existing.UserID)
 	if err != nil {
@@ -366,7 +538,7 @@ func TestServiceCancelCallsRepositoryForActiveBooking(t *testing.T) {
 		},
 	}
 
-	service := NewService(bookingRepo, &slotRepositoryStub{})
+	service := NewService(bookingRepo, &slotRepositoryStub{}, nil)
 
 	got, err := service.Cancel(context.Background(), existing.ID, existing.UserID)
 	if err != nil {

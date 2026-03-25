@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"booker/internal/conference"
 	"github.com/google/uuid"
 
 	"booker/internal/domain"
@@ -18,18 +19,43 @@ const (
 type Service struct {
 	bookingRepo domain.BookingRepository
 	slotRepo    domain.SlotRepository
+	conference  conferenceService
 	now         func() time.Time
 }
 
-func NewService(bookingRepo domain.BookingRepository, slotRepo domain.SlotRepository) *Service {
+type CreateOptions struct {
+	CreateConferenceLink bool
+}
+
+type conferenceService interface {
+	CreateLink(ctx context.Context, req conference.Request) (string, error)
+	DeleteLink(ctx context.Context, link string) error
+}
+
+type noopConferenceService struct{}
+
+func (noopConferenceService) CreateLink(context.Context, conference.Request) (string, error) {
+	return "", domain.ErrConferenceUnavailable
+}
+
+func (noopConferenceService) DeleteLink(context.Context, string) error {
+	return nil
+}
+
+func NewService(bookingRepo domain.BookingRepository, slotRepo domain.SlotRepository, conference conferenceService) *Service {
+	if conference == nil {
+		conference = noopConferenceService{}
+	}
+
 	return &Service{
 		bookingRepo: bookingRepo,
 		slotRepo:    slotRepo,
+		conference:  conference,
 		now:         time.Now,
 	}
 }
 
-func (s *Service) Create(ctx context.Context, booking *domain.Booking) (*domain.Booking, error) {
+func (s *Service) Create(ctx context.Context, booking *domain.Booking, options CreateOptions) (*domain.Booking, error) {
 	if booking == nil || booking.SlotID == uuid.Nil || booking.UserID == uuid.Nil {
 		return nil, domain.ErrInvalidRequest
 	}
@@ -46,7 +72,33 @@ func (s *Service) Create(ctx context.Context, booking *domain.Booking) (*domain.
 	booking.ID = uuid.New()
 	booking.Status = domain.BookingStatusActive
 
-	return s.bookingRepo.Create(ctx, booking)
+	if options.CreateConferenceLink {
+		link, err := s.conference.CreateLink(ctx, conference.Request{
+			BookingID: booking.ID,
+			SlotID:    booking.SlotID,
+			UserID:    booking.UserID,
+			StartAt:   slot.StartAt,
+			EndAt:     slot.EndAt,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		booking.ConferenceLink = &link
+	}
+
+	created, err := s.bookingRepo.Create(ctx, booking)
+	if err != nil {
+		if booking.ConferenceLink != nil {
+			if cleanupErr := s.conference.DeleteLink(ctx, *booking.ConferenceLink); cleanupErr != nil {
+				return nil, domain.ErrInternal
+			}
+		}
+
+		return nil, err
+	}
+
+	return created, nil
 }
 
 func (s *Service) List(ctx context.Context, page, pageSize int) ([]*domain.BookingWithSlot, int, error) {
