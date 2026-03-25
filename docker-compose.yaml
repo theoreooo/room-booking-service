@@ -31,6 +31,10 @@ services:
       DUMMY_ADMIN_UUID: ${DUMMY_ADMIN_UUID:-00000000-0000-0000-0000-000000000001}
       DUMMY_USER_UUID: ${DUMMY_USER_UUID:-00000000-0000-0000-0000-000000000002}
 
+      CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-https://conference.mock.local}
+      CONFERENCE_MOCK_FAIL_CREATE: ${CONFERENCE_MOCK_FAIL_CREATE:-false}
+      CONFERENCE_MOCK_FAIL_DELETE: ${CONFERENCE_MOCK_FAIL_DELETE:-false}
+
       WORKER_SLOT_GENERATION_DAYS: ${WORKER_SLOT_GENERATION_DAYS:-7}
       WORKER_INTERVAL: ${WORKER_INTERVAL:-1h}
 
@@ -61,6 +65,19 @@ services:
       - -database=postgres://${DB_USER:-avito}:${DB_PASSWORD:-avito}@postgres:5432/${DB_NAME:-booking}?sslmode=disable
       - up
     restart: "no"
+
+  k6:
+    image: grafana/k6:latest
+    profiles: ["tools"]
+    working_dir: /work
+    volumes:
+      - ./:/work
+    environment:
+      BASE_URL: http://app:8080
+      REPORT_PATH: /work/loadtest/results.md
+    depends_on:
+      app:
+        condition: service_started
 
 volumes:
   postgres_data:
