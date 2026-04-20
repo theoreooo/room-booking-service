@@ -1,62 +1,103 @@
 # Room Booking Service
 
-Go-сервис бронирования переговорок по спецификации из [`api.yaml`](./api.yaml).
+Standalone Go backend for managing meeting rooms, schedules, available time slots, and bookings.
 
-## Что реализовано
+The repository keeps the full implementation history from the first prototype and continues as an independent pet project focused on backend design, API ergonomics, and reproducible local development.
 
-Обязательная часть:
-- комнаты, расписания, слоты, бронирования, отмена брони;
-- `_info` и `dummyLogin`;
-- JWT middleware;
-- unit/integration тесты.
+## Highlights
 
-Дополнительные задания:
-- регистрация и логин по email/паролю: `POST /register`, `POST /login`;
-- опциональное создание `conferenceLink` при бронировании;
-- `Makefile` с `make up`, `make seed`, `make swagger`, `make loadtest`;
-- Swagger-кодогенерация из аннотаций в коде в папку [`docs`](./docs);
-- конфигурация линтера в [`.golangci.yaml`](./.golangci.yaml);
-- краткие результаты нагрузочного теста в [`loadtest/results.md`](./loadtest/results.md).
+- room, schedule, slot, and booking management
+- JWT-based auth with role separation for `admin` and `user`
+- email/password registration and login
+- optional conference link creation during booking through a mock integration
+- idempotent booking cancellation
+- Swagger generation from handler annotations
+- unit and integration-style HTTP tests
+- Docker Compose local environment
+- reproducible k6 load test for the hottest endpoint
 
-## Быстрый старт
+## Stack
 
-Запуск приложения:
+- Go
+- Chi
+- PostgreSQL
+- Docker Compose
+- Swagger
+- k6
+
+## Why This Project Is Interesting
+
+- Slots are pre-generated for a rolling window of upcoming days instead of being computed on every hot-path request.
+- Availability reads are backed by persisted slot records and database indexes.
+- Booking creation handles external conference-link side effects with best-effort cleanup on partial failures.
+- Cancellation is implemented as an idempotent operation, which keeps client behavior simple and robust.
+
+## Quick Start
+
+Start the full local stack:
 
 ```bash
 make up
 ```
 
-или
+or
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
+The API becomes available at `http://localhost:8080`.
 
-Сервис будет доступен на `http://localhost:8080`.
+An example environment file is available at [`.env.example`](./.env.example), but the Compose defaults are enough for a zero-config local start.
 
-Проверка healthcheck:
-
-```bash
-curl -i http://localhost:8080/_info
-```
-
-Наполнение БД тестовыми данными:
+Seed demo data:
 
 ```bash
 make seed
 ```
 
-## Тестовые пользователи
+Health check:
 
-После `make seed` доступны:
+```bash
+curl -i http://localhost:8080/_info
+```
+
+Swagger UI:
+
+```text
+http://localhost:8080/swagger/index.html
+```
+
+## Demo Users
+
+After `make seed`:
 
 - `admin@example.com` / `Admin123!`
 - `user@example.com` / `User123!`
 
-## Конференц-ссылки
+## Useful Commands
 
-В `POST /bookings/create` поддерживается флаг:
+Run tests:
+
+```bash
+make test
+```
+
+Regenerate Swagger:
+
+```bash
+make swagger
+```
+
+Run the load test:
+
+```bash
+make loadtest
+```
+
+## Booking With Conference Links
+
+`POST /bookings/create` supports the optional flag:
 
 ```json
 {
@@ -65,78 +106,28 @@ make seed
 }
 ```
 
-Используется мок внешнего `Conference Service`.
+The current implementation uses a mock conference provider and models several failure scenarios:
 
-Поддерживаемые сценарии отказа:
-- Если `createConferenceLink=false`, бронирование работает как раньше и внешний сервис не вызывается.
-- Если `createConferenceLink=true` и mock недоступен, бронь не создаётся, клиент получает `503`.
-- Если mock успел вернуть ссылку, но запись брони в БД не сохранилась, сервис делает best-effort cleanup через `DeleteLink`.
-- Если cleanup прошёл успешно, наружу возвращается исходная ошибка сохранения брони, например `409`.
-- Если cleanup тоже упал, наружу возвращается `500`, потому что система уже не может гарантировать консистентное состояние интеграции.
+- skip external calls when `createConferenceLink=false`
+- reject booking creation with `503` when the mock provider is unavailable
+- attempt best-effort cleanup when the external link was created but local persistence fails
 
-Для ручного моделирования сбоев есть env-переменные:
+Failure simulation flags:
+
 - `CONFERENCE_MOCK_FAIL_CREATE=true`
 - `CONFERENCE_MOCK_FAIL_DELETE=true`
 
-## Swagger
+## Quality Notes
 
-Документация генерируется из аннотаций в handlers:
+- `go test ./...` runs the project test suite
+- local coverage report is written to `coverage.out`
+- the repository includes a GitHub Actions CI workflow for build and test checks
 
-```bash
-make swagger
-```
+## Repository Layout
 
-Результат:
-- [`docs/swagger.json`](./docs/swagger.json)
-- [`docs/swagger.yaml`](./docs/swagger.yaml)
-- Swagger UI http://localhost:8080/swagger/index.html
-
-## Нагрузочный тест
-
-Для hot endpoint добавлен воспроизводимый HTTP load test на `k6`. Он поднимает live-сервис в Docker Compose, создает профиль данных для 50 комнат и 1000 слотов в день, а затем льет нагрузку на `GET /rooms/{roomId}/slots/list?date=YYYY-MM-DD`.
-
-```bash
-make loadtest
-```
-
-Сценарий измеряет:
-- RPS для hot endpoint;
-- success rate;
-- latency avg / p50 / p95 / p99 / max;
-- итоговый markdown-отчет в [`loadtest/results.md`](./loadtest/results.md).
-
-Краткий результат актуального прогона:
-- профиль: `50 rooms / 1000 slots per day / 100 RPS`;
-- success rate: `100.00%`;
-- latency p99: `1.94 ms`;
-- подробности: [`loadtest/results.md`](./loadtest/results.md).
-
-Подробности: [`loadtest/results.md`](./loadtest/results.md).
-
-## Тесты и качество
-
-Запуск тестов:
-
-```bash
-make test
-```
-
-Команда запускает все тесты, сохраняет `coverage.out` и печатает coverage summary с итоговой строкой `total`.
-
-Покрытие локально:
-
-```bash
-GOCACHE=$(pwd)/.gocache go test ./... -coverprofile=coverage.out -covermode=atomic
-GOCACHE=$(pwd)/.gocache go tool cover -func=coverage.out
-```
-
-Краткий результат локальной проверки:
-- `go test ./...` проходит успешно;
-- суммарное покрытие: `51.6%`;
-
-## Примечания по архитектуре
-
-- Для слотов используется предгенерация на окно ближайших `N` дней.
-- Самый горячий endpoint читает уже материализованные слоты из БД.
-- Для быстрого чтения используются индексы `idx_slots_room_date` и `idx_bookings_slot_active`.
-- `conference_link` сохраняется прямо в записи брони.
+- [`cmd/app`](./cmd/app) application entrypoint and router
+- [`cmd/seed`](./cmd/seed) demo data seeding command
+- [`internal`](./internal) domain, services, repositories, handlers, middleware, workers
+- [`migrations`](./migrations) database schema migrations
+- [`docs`](./docs) generated Swagger artifacts
+- [`loadtest`](./loadtest) k6 scenario and sample results

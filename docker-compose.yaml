@@ -17,8 +17,8 @@ services:
 
       DB_HOST: postgres
       DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-avito}
-      DB_PASSWORD: ${DB_PASSWORD:-avito}
+      DB_USER: ${DB_USER:-booking}
+      DB_PASSWORD: ${DB_PASSWORD:-booking}
       DB_NAME: ${DB_NAME:-booking}
       DB_SSLMODE: disable
       DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-10s}
@@ -42,13 +42,13 @@ services:
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: ${DB_USER:-avito}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-avito}
+      POSTGRES_USER: ${DB_USER:-booking}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-booking}
       POSTGRES_DB: ${DB_NAME:-booking}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-avito} -d ${DB_NAME:-booking}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-booking} -d ${DB_NAME:-booking}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -62,7 +62,7 @@ services:
         condition: service_healthy
     command: 
       - -path=/migrations/
-      - -database=postgres://${DB_USER:-avito}:${DB_PASSWORD:-avito}@postgres:5432/${DB_NAME:-booking}?sslmode=disable
+      - -database=postgres://${DB_USER:-booking}:${DB_PASSWORD:-booking}@postgres:5432/${DB_NAME:-booking}?sslmode=disable
       - up
     restart: "no"
 
